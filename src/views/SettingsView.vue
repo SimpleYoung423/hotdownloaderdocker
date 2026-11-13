@@ -13,27 +13,24 @@
         </n-alert>
         <!-- 移动端：分组纵向布局；桌面端：原有左右分栏表单。
              共用组件实例，缩放窗口时保留登录输入和弹窗中的编辑草稿。 -->
-        <!-- 账号设置：独立分类，位于基本设置上方，增加底部间距避免与下方黏连 -->
+        <!-- 三个平台的登录放在同一张卡片里，用标签切换。 -->
         <div class="set-card account-section">
             <div class="set-card-title">账号设置</div>
+            <div class="md-tabs account-tabs">
+                <button v-for="tab in ACCOUNT_TABS" :key="tab.key" type="button" class="md-tab"
+                    :class="{ active: accountTab === tab.key, 'is-logged-in': loggedInAccounts.has(tab.key) }"
+                    :title="loggedInAccounts.has(tab.key) ? '已登录' : undefined"
+                    @click="selectAccountTab(tab.key)">
+                    {{ tab.label }}
+                </button>
+            </div>
             <n-form :label-placement="isNarrow ? 'top' : 'left'">
-                <LoginSetting />
-            </n-form>
-        </div>
-
-        <!-- 酷狗账号登录：独立卡片，沿用账号设置的卡片样式 -->
-        <div class="set-card account-section">
-            <div class="set-card-title">酷狗账号</div>
-            <n-form :label-placement="isNarrow ? 'top' : 'left'">
-                <KugouLoginSetting />
-            </n-form>
-        </div>
-
-        <!-- 网易云账号登录：独立卡片，沿用账号设置的卡片样式 -->
-        <div class="set-card account-section">
-            <div class="set-card-title">网易云账号</div>
-            <n-form :label-placement="isNarrow ? 'top' : 'left'">
-                <NeteaseLoginSetting />
+                <LoginSetting v-if="visitedAccounts.includes('qqmusic')" v-show="accountTab === 'qqmusic'"
+                    @login-change="setAccountLoggedIn('qqmusic', $event)" />
+                <KugouLoginSetting v-if="visitedAccounts.includes('kugou')" v-show="accountTab === 'kugou'"
+                    @login-change="setAccountLoggedIn('kugou', $event)" />
+                <NeteaseLoginSetting v-if="visitedAccounts.includes('netease')" v-show="accountTab === 'netease'"
+                    @login-change="setAccountLoggedIn('netease', $event)" />
             </n-form>
         </div>
 
@@ -97,8 +94,10 @@
 </template>
 
 <script setup lang="ts">
+import { onActivated, onMounted, ref } from 'vue'
 import { useNarrowLayout } from '../composables/useNarrowLayout'
 import { useRouter } from 'vue-router'
+import { loadLoggedInPlatforms } from '../composables/usePreferredPlatform'
 import { NForm, NButton, NAlert } from 'naive-ui'
 import QualitySetting from '../components/settings/QualitySetting.vue'
 import DowngradeSetting from '../components/settings/DowngradeSetting.vue'
@@ -124,7 +123,52 @@ import { isNativeRuntime } from '../api/runtimeApi'
 import { useSettingsStore } from '../stores/settingsStore'
 import type { Settings } from '../types'
 
+const ACCOUNT_TABS = [
+    { key: 'qqmusic', label: 'QQ 音乐' },
+    { key: 'kugou', label: '酷狗音乐' },
+    { key: 'netease', label: '网易云音乐' },
+] as const
+
+type AccountTab = (typeof ACCOUNT_TABS)[number]['key']
+
 const router = useRouter()
+const accountTab = ref<AccountTab>('qqmusic')
+const accountTabTouched = ref(false)
+const visitedAccounts = ref<AccountTab[]>(['qqmusic'])
+const loggedInAccounts = ref<Set<AccountTab>>(new Set())
+
+function setAccountLoggedIn(key: AccountTab, loggedIn: boolean) {
+    const next = new Set(loggedInAccounts.value)
+    if (loggedIn) next.add(key)
+    else next.delete(key)
+    loggedInAccounts.value = next
+}
+
+async function refreshAccountBadges() {
+    const loggedIn = await loadLoggedInPlatforms()
+    loggedInAccounts.value = new Set(
+        ACCOUNT_TABS.filter((tab) => loggedIn.has(tab.key)).map((tab) => tab.key),
+    )
+}
+
+function selectAccountTab(key: AccountTab) {
+    accountTabTouched.value = true
+    accountTab.value = key
+    if (!visitedAccounts.value.includes(key)) {
+        visitedAccounts.value = [...visitedAccounts.value, key]
+    }
+}
+
+onMounted(async () => {
+    await refreshAccountBadges()
+    if (accountTabTouched.value) return
+    const preferred = ACCOUNT_TABS.find((tab) => loggedInAccounts.value.has(tab.key))
+    if (preferred) selectAccountTab(preferred.key)
+})
+
+onActivated(() => {
+    void refreshAccountBadges()
+})
 
 // 移动端响应式布局状态
 const isNarrow = useNarrowLayout()
@@ -187,6 +231,32 @@ function goAbout() {
 
 .account-section {
     margin-bottom: 16px;
+}
+
+.account-tabs {
+    margin: 8px 0 4px;
+}
+
+.account-tabs .md-tab {
+    position: relative;
+    padding: 7px 16px;
+}
+
+.account-tabs .md-tab.is-logged-in::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--surface);
+}
+
+.account-tabs .md-tab.active.is-logged-in::after {
+    background: #fff;
+    box-shadow: 0 0 0 2px var(--accent);
 }
 
 /* 将 Naive 表单行渲染为 MusicDock 的 set-row 版式 */
@@ -253,7 +323,19 @@ function goAbout() {
         gap: 20px;
     }
 
+    /* 覆盖成 flex 后，输入区要吃掉标签右侧的剩余宽度。
+       否则可换行的多行框会按最小内容宽度缩成一条。 */
+    .settings-view :deep(.n-form-item-blank) {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .settings-view :deep(.n-form-item-blank > .n-input) {
+        width: 100%;
+    }
+
     .settings-view :deep(.n-form-item-label) {
+        flex: none;
         padding-top: 8px;
         padding-bottom: 0;
     }

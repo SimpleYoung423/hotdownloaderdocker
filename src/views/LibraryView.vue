@@ -34,7 +34,7 @@
                 <n-checkbox :checked="allSelected" :indeterminate="someSelected" @update:checked="toggleAll">
                     全选
                 </n-checkbox>
-                <input v-model="keyword" class="input" type="text" placeholder="在曲库中筛选歌曲名或歌手" />
+                <input v-model="keyword" class="input" type="text" placeholder="在曲库中筛选歌曲名、歌手或目录" />
                 <span class="count-text">{{ filtered.length }} / {{ store.files.length }}</span>
             </div>
 
@@ -63,8 +63,17 @@
                                     @update:checked="(val) => toggleSelect(file.path, val)" />
                             </td>
                             <td>
-                                <div class="cell-title">{{ songOf(file).title }}</div>
-                                <div class="cell-sub">{{ songOf(file).artist }}</div>
+                                <div class="song-cell">
+                                    <img v-if="coverUrls[file.path]" class="cover-thumb" :src="coverUrls[file.path]"
+                                        alt="" />
+                                    <div class="song-text">
+                                        <div class="cell-title">{{ songOf(file).title }}</div>
+                                        <div class="cell-sub">{{ songOf(file).artist }}</div>
+                                        <div v-if="relativeDir(file)" class="cell-dir" :title="relativeDir(file)">
+                                            {{ relativeDir(file) }}
+                                        </div>
+                                    </div>
+                                </div>
                             </td>
                             <td>
                                 <span class="tag" :class="songOf(file).qualityClass">{{ songOf(file).quality }}</span>
@@ -91,24 +100,100 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NCheckbox, useDialog } from 'naive-ui'
 import { useLibraryStore } from '../stores/libraryStore'
 import { isNativeRuntime } from '../api/runtimeApi'
 import { openFileLocation } from '../api/fileApi'
 import { formatFileSize } from '../utils/format'
-import type { AudioFileEntry } from '../api/libraryApi'
+import { fetchLibraryCover, type AudioFileEntry } from '../api/libraryApi'
 
 const store = useLibraryStore()
 const dialog = useDialog()
 const native = isNativeRuntime()
 const keyword = ref('')
 const selected = ref<string[]>([])
+const coverUrls = ref<Record<string, string>>({})
+let coverGeneration = 0
+
+function revokeCoverUrls(urls: Record<string, string>) {
+    for (const url of Object.values(urls)) URL.revokeObjectURL(url)
+}
+
+/** 有封面才取字节并生成 blob URL；没有封面的行不留空位。 */
+async function loadCovers(directory: string, files: readonly AudioFileEntry[]) {
+    const generation = ++coverGeneration
+    revokeCoverUrls(coverUrls.value)
+    coverUrls.value = {}
+    await Promise.all(files.filter((file) => file.hasCover).map(async (file) => {
+        let url = ''
+        try {
+            const cover = await fetchLibraryCover(file.path, directory)
+            if (!cover || generation !== coverGeneration) return
+            const mime = cover.mime.split(';')[0].trim() || 'application/octet-stream'
+            // slice() 得到 ArrayBuffer 上的视图，才能作为 Blob 的字节。
+            url = URL.createObjectURL(new Blob([cover.bytes.slice()], { type: mime }))
+            if (generation !== coverGeneration) {
+                URL.revokeObjectURL(url)
+                return
+            }
+            coverUrls.value = { ...coverUrls.value, [file.path]: url }
+            // 赋值途中如果列表已经换代，这张图不属于当前列表，马上丢掉。
+            if (generation !== coverGeneration) {
+                URL.revokeObjectURL(url)
+                if (coverUrls.value[file.path] === url) {
+                    const next = { ...coverUrls.value }
+                    delete next[file.path]
+                    coverUrls.value = next
+                }
+            }
+        } catch {
+            if (url) URL.revokeObjectURL(url)
+        }
+    }))
+}
+
+watch(
+    () => [store.directory, store.files] as const,
+    ([directory, files]) => {
+        void loadCovers(directory, files)
+    },
+    { immediate: true },
+)
+
+onUnmounted(() => {
+    coverGeneration += 1
+    revokeCoverUrls(coverUrls.value)
+    coverUrls.value = {}
+})
+
+function normalizePath(value: string): string {
+    return value.replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+/** 相对下载根目录的路径。对不上根目录时退回文件名，避免筛掉根目录歌曲。 */
+function relativePath(file: AudioFileEntry): string {
+    const root = normalizePath(store.directory)
+    const full = normalizePath(file.path)
+    if (root && full.startsWith(`${root}/`)) return full.slice(root.length + 1)
+    return file.name
+}
+
+/** 根目录文件没有相对目录，调用方据此决定是否多显示一行。 */
+function relativeDir(file: AudioFileEntry): string {
+    const rel = relativePath(file)
+    const slash = rel.lastIndexOf('/')
+    return slash > 0 ? rel.slice(0, slash) : ''
+}
 
 const filtered = computed(() => {
     const query = keyword.value.trim().toLowerCase()
     if (!query) return store.files
-    return store.files.filter((file) => file.name.toLowerCase().includes(query))
+    return store.files.filter((file) => {
+        const name = file.name.toLowerCase()
+        const rel = relativePath(file).toLowerCase()
+        return name.includes(query) || rel.includes(query)
+    })
 })
 
 const allSelected = computed(
@@ -416,6 +501,27 @@ tbody tr:hover {
     background: #fafbfd;
 }
 
+.song-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.song-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.cover-thumb {
+    width: 44px;
+    height: 44px;
+    flex: none;
+    border-radius: 8px;
+    object-fit: cover;
+    display: block;
+}
+
 .cell-title {
     font-weight: 600;
     color: var(--text-primary);
@@ -428,6 +534,15 @@ tbody tr:hover {
     font-size: 12.5px;
     color: var(--text-tertiary);
     margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cell-dir {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

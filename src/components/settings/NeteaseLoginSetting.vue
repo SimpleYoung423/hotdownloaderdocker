@@ -55,6 +55,8 @@ import { useNarrowLayout } from '../../composables/useNarrowLayout'
 const notification = useNotification()
 const isNarrow = useNarrowLayout()
 const isLoggedIn = ref(false)
+const emit = defineEmits<{ 'login-change': [loggedIn: boolean] }>()
+watch(isLoggedIn, (loggedIn) => emit('login-change', loggedIn))
 const userId = ref('')
 const nickname = ref('')
 const activeTab = ref('manual')

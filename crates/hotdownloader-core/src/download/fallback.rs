@@ -104,8 +104,14 @@ impl DownloadQualityFallback for TaskQualityFallback<'_> {
                         } else {
                             format!("{stem} ({n}).{ext}")
                         };
+                        // SAF 同样把序号留在模板子目录，不能退回授权目录根。
                         let candidate = if is_saf {
-                            name
+                            match path.parent() {
+                                Some(parent) if !parent.as_os_str().is_empty() => {
+                                    parent.join(&name).to_string_lossy().into_owned()
+                                }
+                                _ => name,
+                            }
                         } else {
                             path.parent()?.join(name).to_string_lossy().into_owned()
                         };

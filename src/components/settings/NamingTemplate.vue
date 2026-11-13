@@ -5,7 +5,8 @@
                 @update:value="(val) => (settingsStore.settings.namingTemplate = val)" placeholder="{song} - {artist}" />
             <div class="template-help">
                 可使用变量：<code>{song}</code>（歌名）、<code>{artist}</code>（歌手）、<code>{album}</code>（专辑）、<code>{quality}</code>（音质）<br />
-                若替换后结果为空或仅含非法字符，将自动使用默认模板“歌名 - 歌手”
+                若替换后结果为空或仅含非法字符，将自动使用默认模板“歌名 - 歌手”<br />
+                模板中的 <code>/</code> 会自动建文件夹。歌名等变量里的 <code>/</code> 仍会替换为下划线。
             </div>
         </div>
     </n-form-item>

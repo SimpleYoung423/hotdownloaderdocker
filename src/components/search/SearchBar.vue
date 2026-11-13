@@ -12,7 +12,8 @@
         <!-- 平台选择：搜索栏下方的可点击胶囊 -->
         <div class="md-pills platform-switch">
             <button v-for="p in platformOptions" :key="p.key" type="button" class="md-pill"
-                :class="{ active: p.key === platform }" @click="handlePlatformSelect(p.key)">
+                :class="{ active: p.key === platform, 'is-logged-in': p.loggedIn }"
+                :title="p.loggedIn ? '已登录' : undefined" @click="handlePlatformSelect(p.key)">
                 {{ p.label }}
             </button>
         </div>
@@ -101,10 +102,26 @@ function handleClear() {
 }
 
 .platform-switch .md-pill {
+    position: relative;
     padding: 6px 16px;
     font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.5px;
+}
+
+.platform-switch .md-pill.is-logged-in::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    right: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+.platform-switch .md-pill.active.is-logged-in::after {
+    background: #fff;
 }
 
 .search-bar .search-input {

@@ -146,6 +146,7 @@ pub fn run() {
             commands::file_ops::create_directory,
             commands::file_ops::list_audio_files,
             commands::file_ops::delete_audio_files,
+            commands::file_ops::read_audio_cover,
             commands::file_ops::open_file_location,
             commands::file_ops::pick_saf_folder,
             commands::file_ops::delete_saf_file,

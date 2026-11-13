@@ -3,6 +3,8 @@
 export interface PlatformOption {
     key: string
     label: string
+    /** 当前是否已登录。搜索页用来标出已登录平台。 */
+    loggedIn?: boolean
 }
 
 export const PLATFORMS: PlatformOption[] = [

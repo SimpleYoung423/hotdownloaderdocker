@@ -61,6 +61,15 @@ pub fn delete_audio_files(
     hotdownloader_core::library::delete_audio_files(&directory, &paths)
 }
 
+/// 读取下载目录内音频文件的内嵌封面。没有封面时返回 None。
+#[command]
+pub fn read_audio_cover(
+    directory: String,
+    path: String,
+) -> Result<Option<hotdownloader_core::library::AudioCover>, String> {
+    hotdownloader_core::library::read_audio_cover(&directory, &path)
+}
+
 /// 打开文件所在目录并选中文件（Android 上打开文件本身）
 #[command]
 pub fn open_file_location(app: AppHandle, path: String) -> Result<(), String> {

@@ -76,6 +76,87 @@ pub(crate) fn error_response(status: StatusCode, message: impl AsRef<str>) -> Re
     json_response(status, json!({ "error": message.as_ref() }))
 }
 
+/// 封面等二进制响应。Content-Type 来自调用方，不包成 JSON。
+fn image_response(content_type: &str, bytes: Vec<u8>) -> Response<HttpBody> {
+    let content_type = if is_header_safe_mime(content_type) {
+        content_type
+    } else {
+        "application/octet-stream"
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", content_type)
+        .header("cache-control", "no-store")
+        .header("x-content-type-options", "nosniff")
+        .body(Full::new(Bytes::from(bytes)).boxed_unsync())
+        .expect("固定的封面响应头应始终有效")
+}
+
+fn is_header_safe_mime(mime: &str) -> bool {
+    !mime.is_empty()
+        && mime.contains('/')
+        && mime.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+}
+
+/// 从 `a=b&c=d` 查询串取出并百分号解码单个参数。
+fn query_param(query: &str, key: &str) -> Option<String> {
+    query.split('&').find_map(|pair| {
+        let (raw_key, raw_value) = pair.split_once('=')?;
+        if raw_key == key {
+            Some(percent_decode(raw_value))
+        } else {
+            None
+        }
+    })
+}
+
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            b'%' if index + 2 < bytes.len() => {
+                let hex = [bytes[index + 1], bytes[index + 2]];
+                let parsed = std::str::from_utf8(&hex)
+                    .ok()
+                    .and_then(|text| u8::from_str_radix(text, 16).ok());
+                match parsed {
+                    Some(byte) => {
+                        decoded.push(byte);
+                        index += 3;
+                    }
+                    None => {
+                        decoded.push(b'%');
+                        index += 1;
+                    }
+                }
+            }
+            byte => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+/// 按路径读取曲库内嵌封面。没有图片时 404，路径不合法时 400。
+fn library_cover_response(directory: &str, query: &str) -> Response<HttpBody> {
+    let Some(path) = query_param(query, "path").filter(|value| !value.trim().is_empty()) else {
+        return error_response(StatusCode::BAD_REQUEST, "缺少文件路径");
+    };
+    match hotdownloader_core::library::read_audio_cover(directory, &path) {
+        Ok(Some(cover)) => image_response(&cover.mime, cover.data),
+        Ok(None) => error_response(StatusCode::NOT_FOUND, "没有内嵌封面"),
+        Err(error) => error_response(StatusCode::BAD_REQUEST, error),
+    }
+}
+
 fn static_response(web_dir: &Path, url_path: &str) -> Response<HttpBody> {
     let relative = if url_path == "/" {
         "index.html"
@@ -312,6 +393,11 @@ pub async fn handle(
         (Method::GET, "/api/settings/default-download-dir") => json_response(
             StatusCode::OK,
             json!(runtime.environment.default_download_dir()),
+        ),
+        // 曲库内嵌封面：返回图片字节，不包成 JSON。没有封面时 404。
+        (Method::GET, "/api/library/cover") => library_cover_response(
+            runtime.environment.default_download_dir(),
+            request.uri().query().unwrap_or(""),
         ),
         // 曲库内容来自下载目录中的实际音频文件，而不是任务记录。
         (Method::GET, "/api/library") => {

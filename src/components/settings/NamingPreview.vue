@@ -38,27 +38,43 @@ const exampleArtists = computed(() => {
     return exampleSong.artistList.join(sep)
 })
 
-// 根据当前模板与歌手拼接结果，生成示例文件名
-const exampleFilename = computed(() => {
-    const artist = exampleArtists.value
-    const template = settingsStore.settings.namingTemplate || '{song} - {artist}'
-    let name = template
+// 与后端 apply_template 相同，只替换当前这一段。
+const applySegment = (segment: string, artist: string) =>
+    segment
         .replaceAll('{song}', exampleSong.song)
         .replaceAll('{artist}', artist)
         .replaceAll('{album}', exampleSong.album)
         .replaceAll('{quality}', exampleSong.quality)
 
-    const sanitized = sanitize(name).trim()
-    if (!sanitized) {
-        const fallback = '{song} - {artist}'
-            .replaceAll('{song}', exampleSong.song)
-            .replaceAll('{artist}', artist)
-            .replaceAll('{album}', exampleSong.album)
-            .replaceAll('{quality}', exampleSong.quality)
-        const fallbackSanitized = sanitize(fallback).trim()
-        return fallbackSanitized || '未知歌曲'
+// 空段、`.`、`..` 丢掉，避免预览出目录穿越。
+const usableSegment = (sanitized: string) => {
+    const trimmed = sanitized.trim()
+    return trimmed !== '' && trimmed !== '.' && trimmed !== '..'
+}
+
+// 模板没有可用段时，沿用「歌名 - 歌手」；两边都没有文字则用稳定名称。
+const fallbackFilename = (artist: string) => {
+    const fallback = sanitize(applySegment('{song} - {artist}', artist))
+    const noSongText = sanitize(exampleSong.song).trim() === '' && sanitize(artist).trim() === ''
+    if (fallback.trim() === '' || noSongText) {
+        return '未知歌曲'
     }
-    return sanitized
+    return fallback
+}
+
+// 先按模板里手写的 / 分段，再对每段做变量替换和非法字符过滤。
+// 歌名、歌手、专辑、音质以及歌手分隔符里的 / 仍会变成 _。
+const exampleFilename = computed(() => {
+    const artist = exampleArtists.value
+    const template = settingsStore.settings.namingTemplate || '{song} - {artist}'
+    const segments = template
+        .split('/')
+        .map((segment) => sanitize(applySegment(segment, artist)))
+        .filter((segment) => usableSegment(segment))
+    if (segments.length === 0) {
+        return fallbackFilename(artist)
+    }
+    return segments.join('/')
 })
 </script>
 

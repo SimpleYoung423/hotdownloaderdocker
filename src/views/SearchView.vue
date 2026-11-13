@@ -2,9 +2,9 @@
     <div class="search-view">
         <!-- 平台绑定 + 搜索类型切换 -->
         <div class="search-header">
-            <SearchBar :keyword="keyword" @update:keyword="onKeywordInput" v-model:platform="currentPlatform"
-                :platform-options="PLATFORMS" :placeholder="searchPlaceholder" button-text="搜索"
-                @search="handleSearch" />
+            <SearchBar :keyword="keyword" @update:keyword="onKeywordInput" :platform="currentPlatform"
+                :platform-options="platformOptions" :placeholder="searchPlaceholder" button-text="搜索"
+                @update:platform="onPlatformSelect" @search="handleSearch" />
 
             <!-- 搜索类型切换按钮 -->
             <div class="md-tabs type-switch">
@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, computed, onMounted, onActivated, onBeforeUnmount } from 'vue'
 import { NSpin, NButton, NAlert } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import SearchBar from '../components/search/SearchBar.vue'
@@ -99,12 +99,31 @@ import { usePlaylistSearch } from '../composables/usePlaylistSearch'
 import * as musicApi from '../api/musicApi'
 import type { SearchSuggestionData, PlaylistSearchItem, SongInfo } from '../types'
 import { PLATFORMS, DEFAULT_PLATFORM } from '../config/platforms'
+import { firstLoggedInPlatform, loadLoggedInPlatforms } from '../composables/usePreferredPlatform'
 import { useMusicNavigation } from '../composables/useMusicNavigation'
 
 const router = useRouter()
 const { openArtist, openAlbum, openRelatedArtist, openSongAlbum } = useMusicNavigation()
 const keyword = ref('')
 const currentPlatform = ref(DEFAULT_PLATFORM)
+const platformTouched = ref(false)
+const loggedInPlatforms = ref(new Set<string>())
+const platformOptions = computed(() =>
+    PLATFORMS.map((platform) => ({ ...platform, loggedIn: loggedInPlatforms.value.has(platform.key) })),
+)
+
+function onPlatformSelect(key: string) {
+    platformTouched.value = true
+    currentPlatform.value = key
+}
+
+async function preferLoggedInPlatform() {
+    const loggedIn = await loadLoggedInPlatforms()
+    loggedInPlatforms.value = loggedIn
+    if (platformTouched.value) return
+    const preferred = firstLoggedInPlatform(loggedIn)
+    if (preferred) currentPlatform.value = preferred
+}
 
 // 搜索类型
 type SearchType = 'song' | 'artist' | 'album' | 'playlist'
@@ -277,8 +296,13 @@ async function fetchHotKeywords() {
     }
 }
 
-onMounted(() => {
+onMounted(async () => {
+    await preferLoggedInPlatform()
     fetchHotKeywords()
+})
+
+onActivated(() => {
+    void preferLoggedInPlatform()
 })
 
 // 平台切换

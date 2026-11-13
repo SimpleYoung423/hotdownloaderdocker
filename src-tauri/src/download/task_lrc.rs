@@ -1,5 +1,5 @@
 use std::io::{Seek, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use hotdownloader_core::download::postprocess::lrc_file_name;
 use tauri::AppHandle;
@@ -31,9 +31,15 @@ pub(crate) async fn write_saf_lrc_file(
     let lrc_name = lrc_file_name(song_file_path);
     let api = app_handle.android_fs();
 
+    // 歌词跟音频走同一个相对子目录；根目录文件仍然只使用文件名。
+    let audio_path = Path::new(song_file_path);
+    let file_path = match audio_path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.join(&lrc_name),
+        _ => PathBuf::from(&lrc_name),
+    };
+
     // 尝试解析已存在的 LRC 文件，若存在则打开可写并清空；否则创建新文件
-    let file_path = Path::new(&lrc_name);
-    let file_uri_opt = api.resolve_file_uri(&parent_uri, file_path).ok();
+    let file_uri_opt = api.resolve_file_uri(&parent_uri, &file_path).ok();
 
     match file_uri_opt {
         Some(existing_uri) => {
@@ -63,7 +69,7 @@ pub(crate) async fn write_saf_lrc_file(
         }
         None => {
             // 文件不存在：创建新文件
-            match api.create_new_file(&parent_uri, file_path, None) {
+            match api.create_new_file(&parent_uri, &file_path, None) {
                 Ok(new_uri) => match api.open_file_writable(&new_uri) {
                     Ok(mut f) => {
                         if let Err(e) = f.write_all(lrc_content.as_bytes()) {

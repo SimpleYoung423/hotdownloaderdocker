@@ -1,5 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { webRequest } from './webClient'
+import { webHeaders, webRequest, webSession } from './webClient'
 
 /** 下载目录中的单个音频文件；字段与 Rust `AudioFileEntry` 对应。 */
 export interface AudioFileEntry {
@@ -11,6 +11,14 @@ export interface AudioFileEntry {
     size: number
     /** 小写扩展名，不含点。 */
     extension: string
+    /** 是否有内嵌封面。没有封面时不要占位。 */
+    hasCover: boolean
+}
+
+/** 内嵌封面的原始字节，供曲库缩略图生成 blob URL。 */
+export interface LibraryCover {
+    mime: string
+    bytes: Uint8Array
 }
 
 export interface LibraryResponse {
@@ -52,4 +60,41 @@ export async function deleteLibraryFiles(paths: string[], directory?: string): P
         method: 'POST',
         body: JSON.stringify({ paths }),
     })
+}
+
+/**
+ * 读取一首歌的内嵌封面。
+ *
+ * 网页鉴权在 Authorization 头里，不能直接用 img src。这里带上 webHeaders 取字节。
+ * 没有封面时返回 null。
+ */
+export async function fetchLibraryCover(path: string, directory?: string): Promise<LibraryCover | null> {
+    if (isTauri()) {
+        try {
+            const result = await invoke<{ mime: string; data: number[] } | null>('read_audio_cover', {
+                directory: directory ?? '',
+                path,
+            })
+            if (!result || result.data.length === 0) return null
+            return { mime: result.mime || 'application/octet-stream', bytes: new Uint8Array(result.data) }
+        } catch {
+            return null
+        }
+    }
+
+    const headers = new Headers(webHeaders())
+    const params = new URLSearchParams({ path })
+    const response = await fetch(`/api/library/cover?${params.toString()}`, {
+        headers,
+        cache: 'no-store',
+    })
+    if (response.status === 401) {
+        webSession.authorized = false
+        return null
+    }
+    if (response.status === 404 || !response.ok) return null
+    const mime = (response.headers.get('content-type') ?? 'application/octet-stream').split(';')[0].trim()
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.length === 0) return null
+    return { mime: mime || 'application/octet-stream', bytes }
 }

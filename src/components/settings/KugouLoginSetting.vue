@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { NTabs, NTabPane, NForm, NFormItem, NInput, NButton, useNotification } from 'naive-ui'
 import { kugouLogin, type KugouCredentials } from '../../api/kugouLogin'
 import { useNarrowLayout } from '../../composables/useNarrowLayout'
@@ -56,6 +56,8 @@ import { useNarrowLayout } from '../../composables/useNarrowLayout'
 const notification = useNotification()
 const isNarrow = useNarrowLayout()
 const isLoggedIn = ref(false)
+const emit = defineEmits<{ 'login-change': [loggedIn: boolean] }>()
+watch(isLoggedIn, (loggedIn) => emit('login-change', loggedIn))
 const userId = ref('')
 const activeTab = ref('qr')
 

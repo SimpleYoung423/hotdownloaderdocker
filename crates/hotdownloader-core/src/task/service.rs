@@ -28,6 +28,16 @@ pub struct TaskService<'a> {
     environment: &'a dyn TaskEnvironment,
 }
 
+/// SAF 重名只改最后一段文件名，相对父目录留在授权文件夹里。
+fn saf_name_in_same_directory(original: &std::path::Path, file_name: &str) -> String {
+    match original.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => {
+            parent.join(file_name).to_string_lossy().into_owned()
+        }
+        _ => file_name.to_string(),
+    }
+}
+
 /// 路径检查使用一次配置快照，重命名时继续使用同一个 SAF 目录。
 struct PathCheck {
     original_path: String,
@@ -132,7 +142,7 @@ impl<'a> TaskService<'a> {
                 format!("{stem} ({n}).{ext}")
             };
             let candidate = if is_saf {
-                name
+                saf_name_in_same_directory(path, &name)
             } else {
                 path.parent()
                     .ok_or("无效下载目录")?
@@ -539,7 +549,7 @@ impl<'a> TaskService<'a> {
             &task.filename,
         );
 
-        // 路径解析交给运行时。Android 传入相对文件名，普通文件系统传入完整路径。
+        // 路径解析交给运行时。Android 传入相对路径（可含子目录），普通文件系统传入完整路径。
         let exists = self
             .environment
             .file_exists(&download_dir, is_saf, saf_folder_uri.as_deref());
@@ -558,7 +568,7 @@ impl<'a> TaskService<'a> {
                     format!("{} ({}).{}", stem, counter, ext)
                 };
                 let new_path = if is_saf {
-                    new_name.clone()
+                    saf_name_in_same_directory(path, &new_name)
                 } else {
                     path.parent()
                         .unwrap_or_else(|| std::path::Path::new("."))

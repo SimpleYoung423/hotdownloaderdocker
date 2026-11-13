@@ -1,7 +1,8 @@
 <template>
     <div class="playlist-view">
-        <SearchBar v-model:keyword="input" v-model:platform="currentPlatform" :platform-options="PLATFORMS"
-            placeholder="请输入歌单链接或 ID" button-text="导入歌单" :loading="loading" @search="handleImport" @clear="reset" />
+        <SearchBar v-model:keyword="input" :platform="currentPlatform" :platform-options="platformOptions"
+            placeholder="请输入歌单链接或 ID" button-text="导入歌单" :loading="loading" @update:platform="onPlatformSelect"
+            @search="handleImport" @clear="reset" />
 
         <div v-if="loading" class="loading-wrapper">
             <n-spin size="medium" />
@@ -46,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onActivated, watch } from 'vue'
+import { computed, ref, onMounted, onActivated, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { NSpin, NAlert, NEmpty, NCheckbox } from 'naive-ui'
 import SearchBar from '../components/search/SearchBar.vue'
@@ -56,10 +57,29 @@ import { usePlaylistImport } from '../composables/usePlaylistImport'
 import { useDownloadActions } from '../composables/useDownloadActions'
 import { useMusicNavigation } from '../composables/useMusicNavigation'
 import { PLATFORMS, DEFAULT_PLATFORM } from '../config/platforms'
+import { firstLoggedInPlatform, loadLoggedInPlatforms } from '../composables/usePreferredPlatform'
 import { formatPlayCount } from '../utils/format'
 
 const route = useRoute()
 const currentPlatform = ref(DEFAULT_PLATFORM)
+const platformTouched = ref(false)
+const loggedInPlatforms = ref(new Set<string>())
+const platformOptions = computed(() =>
+    PLATFORMS.map((platform) => ({ ...platform, loggedIn: loggedInPlatforms.value.has(platform.key) })),
+)
+
+function onPlatformSelect(key: string) {
+    platformTouched.value = true
+    currentPlatform.value = key
+}
+
+async function preferLoggedInPlatform() {
+    const loggedIn = await loadLoggedInPlatforms()
+    loggedInPlatforms.value = loggedIn
+    if (platformTouched.value || route.query.platform) return
+    const preferred = firstLoggedInPlatform(loggedIn)
+    if (preferred) currentPlatform.value = preferred
+}
 
 // 使用歌单导入 composable，并解构出响应式状态和方法
 const {
@@ -107,8 +127,14 @@ async function loadPlaylistFromQuery() {
     }
 }
 
-onMounted(loadPlaylistFromQuery)
-onActivated(loadPlaylistFromQuery)
+onMounted(async () => {
+    await loadPlaylistFromQuery()
+    await preferLoggedInPlatform()
+})
+onActivated(async () => {
+    await loadPlaylistFromQuery()
+    await preferLoggedInPlatform()
+})
 
 watch(
     () => route.query.platform + '|' + route.query.id,
