@@ -11,6 +11,7 @@ export const PLATFORMS: PlatformOption[] = [
     { key: 'qqmusic', label: 'QQ' },
     { key: 'kuwo', label: 'KW' },
     { key: 'kugou', label: 'KG' },
+    { key: 'kugoulite', label: '概念' },
     { key: 'netease', label: 'WY' },
 ]
 

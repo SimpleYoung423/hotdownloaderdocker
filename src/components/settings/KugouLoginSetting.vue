@@ -7,7 +7,7 @@
                     <div class="qr-container">
                         <img v-if="qrImage" :src="qrImage" alt="二维码" class="qr-img" />
                         <div class="qr-tips">
-                            <span v-if="qrStatus === 'waiting'">请使用酷狗音乐 App 扫码</span>
+                            <span v-if="qrStatus === 'waiting'">请使用{{ lite ? '酷狗概念版' : '酷狗音乐' }} App 扫码</span>
                             <span v-else-if="qrStatus === 'scanned'">已扫码，请在手机上确认</span>
                             <span v-else-if="qrStatus === 'expired'">二维码已过期，请刷新</span>
                             <span v-else-if="qrStatus === 'error'">登录出错，请重试</span>
@@ -50,9 +50,18 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { NTabs, NTabPane, NForm, NFormItem, NInput, NButton, useNotification } from 'naive-ui'
-import { kugouLogin, type KugouCredentials } from '../../api/kugouLogin'
+import { kugouLiteLogin, kugouLogin, type KugouCredentials } from '../../api/kugouLogin'
 import { useNarrowLayout } from '../../composables/useNarrowLayout'
 
+const props = defineProps<{ lite?: boolean }>()
+
+function request(
+    action: 'status' | 'qr' | 'check' | 'manual' | 'logout',
+    id?: string,
+    credentials?: KugouCredentials,
+) {
+    return props.lite ? kugouLiteLogin(action, id, credentials) : kugouLogin(action, id, credentials)
+}
 const notification = useNotification()
 const isNarrow = useNarrowLayout()
 const isLoggedIn = ref(false)
@@ -79,7 +88,7 @@ async function refreshQr() {
     if (pollTimer) clearInterval(pollTimer)
     qrLoading.value = true
     try {
-        const res = await kugouLogin('qr')
+        const res = await request('qr')
         qrImage.value = res.qr_image ?? ''
         qrId.value = res.qrcode_id ?? ''
         qrStatus.value = 'waiting'
@@ -96,7 +105,7 @@ function startPolling() {
     if (pollTimer) clearInterval(pollTimer)
     pollTimer = setInterval(async () => {
         try {
-            const result = await kugouLogin('check', qrId.value)
+            const result = await request('check', qrId.value)
             qrStatus.value = result.status ?? 'error'
             if (result.status === 'confirmed') {
                 if (pollTimer) clearInterval(pollTimer)
@@ -124,7 +133,7 @@ async function handleManualLogin() {
             mid: manualMid.value,
             dfid: manualDfid.value,
         }
-        const result = await kugouLogin('manual', '', credentials)
+        const result = await request('manual', '', credentials)
         isLoggedIn.value = true
         userId.value = result.userid ?? manualUserid.value
     } catch (error) {
@@ -137,7 +146,7 @@ async function handleManualLogin() {
 
 async function handleLogout() {
     try {
-        await kugouLogin('logout')
+        await request('logout')
         isLoggedIn.value = false
         userId.value = ''
         if (pollTimer) clearInterval(pollTimer)
@@ -148,7 +157,7 @@ async function handleLogout() {
 
 onMounted(async () => {
     try {
-        const status = await kugouLogin('status')
+        const status = await request('status')
         isLoggedIn.value = status.logged_in ?? false
         userId.value = status.userid ?? ''
     } catch (error) {

@@ -29,6 +29,8 @@
                     @login-change="setAccountLoggedIn('qqmusic', $event)" />
                 <KugouLoginSetting v-if="visitedAccounts.includes('kugou')" v-show="accountTab === 'kugou'"
                     @login-change="setAccountLoggedIn('kugou', $event)" />
+                <KugouLoginSetting v-if="visitedAccounts.includes('kugoulite')" v-show="accountTab === 'kugoulite'" lite
+                    @login-change="setAccountLoggedIn('kugoulite', $event)" />
                 <NeteaseLoginSetting v-if="visitedAccounts.includes('netease')" v-show="accountTab === 'netease'"
                     @login-change="setAccountLoggedIn('netease', $event)" />
             </n-form>
@@ -126,6 +128,7 @@ import type { Settings } from '../types'
 const ACCOUNT_TABS = [
     { key: 'qqmusic', label: 'QQ 音乐' },
     { key: 'kugou', label: '酷狗音乐' },
+    { key: 'kugoulite', label: '酷狗概念版' },
     { key: 'netease', label: '网易云音乐' },
 ] as const
 

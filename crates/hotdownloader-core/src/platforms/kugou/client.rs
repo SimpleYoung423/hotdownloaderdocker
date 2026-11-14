@@ -7,14 +7,56 @@ use std::{
 };
 
 static MID: Lazy<String> = Lazy::new(|| super::super::get_guid().to_lowercase());
-const SALT: &str = "OIlwieks28dk2k092lksi2UIkp";
+
+#[derive(Clone, Copy)]
+struct Profile {
+    appid: &'static str,
+    clientver: &'static str,
+    /// Android 网关签名盐。概念版和标准版不同。
+    sign_salt: &'static str,
+    /// /v5/url 的 key 盐，后面还要拼 appid。
+    url_key_salt: &'static str,
+}
+
+const STANDARD: Profile = Profile {
+    appid: "1005",
+    clientver: "20489",
+    sign_salt: "OIlwieks28dk2k092lksi2UIkp",
+    url_key_salt: "57ae12eb6890223e355ccfcb74edf70d",
+};
+
+/// 酷狗概念版。取链必须用这套身份，标准版 appid 不认概念版会员。
+const LITE: Profile = Profile {
+    appid: "3116",
+    clientver: "11440",
+    sign_salt: "LnT6xpN3khm36zse0QzvmgTZ3waWdRSA",
+    url_key_salt: "185672dd44712f60bb1736df5a377e82",
+};
+
+tokio::task_local! {
+    static ACTIVE_PROFILE: Profile;
+}
+
+pub(super) fn is_lite() -> bool {
+    ACTIVE_PROFILE
+        .try_with(|profile| profile.appid == LITE.appid)
+        .unwrap_or(false)
+}
+
+pub async fn with_lite<Fut: std::future::Future>(future: Fut) -> Fut::Output {
+    ACTIVE_PROFILE.scope(LITE, future).await
+}
+
+fn active_profile() -> Profile {
+    ACTIVE_PROFILE.try_with(|profile| *profile).unwrap_or(STANDARD)
+}
 
 pub(super) fn md5(value: &str) -> String {
     format!("{:x}", Md5::digest(value.as_bytes()))
 }
 
 fn signature(params: &BTreeMap<String, String>, body: &str) -> String {
-    signature_with_salt(params, body, SALT)
+    signature_with_salt(params, body, active_profile().sign_salt)
 }
 
 fn signature_with_salt(params: &BTreeMap<String, String>, body: &str, salt: &str) -> String {
@@ -68,9 +110,47 @@ pub(super) fn check_response(value: Value) -> Result<Value, String> {
             .filter_map(|k| value[k].as_str())
             .find(|s| !s.is_empty())
             .unwrap_or("平台拒绝请求");
+        log_response("rejected", &value);
         return Err(format!("酷狗请求失败 ({code}): {message}"));
     }
+    log_response("ok", &value);
     Ok(value)
+}
+
+fn log_response(kind: &str, value: &Value) {
+    if std::env::var("HOTDOWNLOADER_KUGOU_LOG").is_err() {
+        return;
+    }
+    let mut copy = value.clone();
+    redact(&mut copy);
+    let text = copy.to_string();
+    let text = if text.len() > 1800 {
+        format!("{}…", &text[..1800])
+    } else {
+        text
+    };
+    eprintln!("kugou {kind}: {text}");
+}
+
+fn redact(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for key in ["token", "key", "signature", "userid", "clienttoken"] {
+                if map.contains_key(key) {
+                    map.insert(key.to_owned(), Value::String("<redacted>".into()));
+                }
+            }
+            for nested in map.values_mut() {
+                redact(nested);
+            }
+        }
+        Value::Array(items) => {
+            for nested in items {
+                redact(nested);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub(super) async fn request(
@@ -107,8 +187,8 @@ pub(super) async fn request_with(
         ("dfid", "-"),
         ("mid", MID.as_str()),
         ("uuid", "-"),
-        ("appid", "1005"),
-        ("clientver", "20489"),
+        ("appid", active_profile().appid),
+        ("clientver", active_profile().clientver),
         ("clienttime", &time),
     ]
     .into_iter()
@@ -126,11 +206,14 @@ pub(super) async fn request_with(
         }
     }
     if path == "/v5/url" {
+        let profile = active_profile();
         query.insert(
             "key".into(),
             md5(&format!(
-                "{}57ae12eb6890223e355ccfcb74edf70d1005{}{}",
+                "{}{}{}{}{}",
                 query["hash"],
+                profile.url_key_salt,
+                profile.appid,
                 query["mid"],
                 query.get("userid").map(String::as_str).unwrap_or("0")
             )),
@@ -143,6 +226,13 @@ pub(super) async fn request_with(
         signature(&query, &body_text)
     };
     query.insert("signature".into(), signed);
+    if std::env::var("HOTDOWNLOADER_KUGOU_LOG").is_ok() {
+        eprintln!(
+            "kugou req: {path} appid={} clientver={}",
+            query.get("appid").map(String::as_str).unwrap_or(""),
+            query.get("clientver").map(String::as_str).unwrap_or("")
+        );
+    }
     let mut req = client
         .request(
             if body.is_some() {
@@ -216,7 +306,10 @@ mod tests {
         let params = [("z".into(), "中文".into()), ("a".into(), "1".into())].into();
         assert_eq!(
             signature(&params, "{}"),
-            md5(&format!("{SALT}a=1z=中文{{}}{SALT}"))
+            md5(&format!(
+                "{salt}a=1z=中文{{}}{salt}",
+                salt = STANDARD.sign_salt
+            ))
         );
     }
 }

@@ -9,7 +9,7 @@ export function getMusicEntityId(platform: string, id = '', mid = ''): string {
     if (platform === 'qqmusic') {
         return /^[a-zA-Z0-9]+$/.test(mid) && mid !== '0' ? mid : ''
     }
-    if (platform === 'kuwo' || platform === 'kugou' || platform === 'netease') {
+    if (platform === 'kuwo' || platform === 'kugou' || platform === 'kugoulite' || platform === 'netease') {
         return /^\d+$/.test(id) && /[1-9]/.test(id) ? id : ''
     }
     return ''

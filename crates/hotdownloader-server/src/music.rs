@@ -38,6 +38,28 @@ fn default_limit() -> u32 {
 
 pub async fn execute(
     action: &str,
+    mut request: MusicRequest,
+    artist_separator: &str,
+    login_store: &dyn LoginCredentialStore,
+    netease_store: &platforms::netease::login::Store,
+) -> Result<Value, String> {
+    // 概念版复用酷狗查询，只换签名和 appid。
+    if request.platform == "kugoulite" {
+        request.platform = "kugou".into();
+        return platforms::kugou::with_lite(execute_inner(
+            action,
+            request,
+            artist_separator,
+            login_store,
+            netease_store,
+        ))
+        .await;
+    }
+    execute_inner(action, request, artist_separator, login_store, netease_store).await
+}
+
+async fn execute_inner(
+    action: &str,
     request: MusicRequest,
     artist_separator: &str,
     login_store: &dyn LoginCredentialStore,

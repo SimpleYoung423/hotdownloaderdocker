@@ -165,7 +165,21 @@ pub async fn execute(
                 (params, number(&state["generation"]))
             };
             let device = params.clone();
-            params.as_object_mut().unwrap().extend(json!({"appid":1001,"type":1,"plat":4,"qrcode_txt":"https://h5.kugou.com/apps/loginQRCode/html/index.html?appid=1005&","srcappid":2919}).as_object().unwrap().clone());
+            let login_appid = if super::client::is_lite() { "3116" } else { "1005" };
+            params.as_object_mut().unwrap().extend(
+                json!({
+                    "appid": 1001,
+                    "type": 1,
+                    "plat": 4,
+                    "qrcode_txt": format!(
+                        "https://h5.kugou.com/apps/loginQRCode/html/index.html?appid={login_appid}&"
+                    ),
+                    "srcappid": 2919
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            );
             let result = request_with(
                 &CLIENT,
                 "https://login-user.kugou.com",
@@ -216,10 +230,15 @@ pub async fn execute(
                 )
             };
             params.as_object_mut().unwrap().extend(
-                json!({"appid":1005,"srcappid":2919,"plat":4,"qrcode":key})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
+                json!({
+                    "appid": if super::client::is_lite() { 3116 } else { 1005 },
+                    "srcappid": 2919,
+                    "plat": 4,
+                    "qrcode": key
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
             );
             let result = request_with(
                 &CLIENT,

@@ -15,7 +15,9 @@ pub async fn fetch_hot_keywords(app: AppHandle, platform: String) -> Result<Stri
         }
         Platform::QqMusic => platforms::qqmusic::suggest::fetch_hot_keywords().await,
         Platform::Kuwo => platforms::kuwo::suggest::fetch_hot_keywords().await,
-        Platform::Kugou => platforms::kugou::suggest::fetch_hot_keywords().await,
+        Platform::Kugou | Platform::KugouLite => {
+            platforms::kugou::call(&platform, platforms::kugou::suggest::fetch_hot_keywords()).await
+        }
     }
 }
 
@@ -37,6 +39,12 @@ pub async fn fetch_suggestions(
         }
         Platform::QqMusic => platforms::qqmusic::suggest::fetch_suggestions(keyword).await,
         Platform::Kuwo => platforms::kuwo::suggest::fetch_suggestions(keyword).await,
-        Platform::Kugou => platforms::kugou::suggest::fetch_suggestions(keyword).await,
+        Platform::Kugou | Platform::KugouLite => {
+            platforms::kugou::call(
+                &platform,
+                platforms::kugou::suggest::fetch_suggestions(keyword),
+            )
+            .await
+        }
     }
 }

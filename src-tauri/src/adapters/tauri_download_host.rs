@@ -208,20 +208,31 @@ impl DownloadLinkProvider for TauriDownloadLinkProvider {
                 .await
             });
         }
-        if platform == Platform::Kugou {
+        if platform == Platform::Kugou || platform == Platform::KugouLite {
+            let lite = platform == Platform::KugouLite;
             return Box::pin(async move {
-                let store = crate::commands::api::login::kugou_store(&self.app)?;
+                let store = if lite {
+                    crate::commands::api::login::kugou_lite_store(&self.app)?
+                } else {
+                    crate::commands::api::login::kugou_store(&self.app)?
+                };
                 let params = store.request_params()?;
-                hotdownloader_core::platforms::kugou::link::get_download_link_with_credentials(
-                    &reqwest::Client::builder()
-                        .timeout(std::time::Duration::from_secs(30))
-                        .build()
-                        .map_err(|e| e.to_string())?,
-                    song_mid,
-                    filename,
-                    params,
-                )
-                .await
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .map_err(|e| e.to_string())?;
+                let link =
+                    hotdownloader_core::platforms::kugou::link::get_download_link_with_credentials(
+                        &client,
+                        song_mid,
+                        filename,
+                        params,
+                    );
+                if lite {
+                    hotdownloader_core::platforms::kugou::with_lite(link).await
+                } else {
+                    link.await
+                }
             });
         }
         self.provider.fetch(platform, song_mid, filename)

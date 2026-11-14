@@ -36,7 +36,18 @@ pub async fn prepare_assets(
             Platform::Netease => {
                 crate::platforms::netease::lyrics::get_lyric_by_id(context.song_id).await
             }
-            Platform::Kugou => crate::platforms::kugou::lyrics::get_lyric(&context.song_mid).await,
+            Platform::Kugou | Platform::KugouLite => {
+                let key = if context.platform == Platform::KugouLite {
+                    "kugoulite"
+                } else {
+                    "kugou"
+                };
+                crate::platforms::kugou::call(
+                    key,
+                    crate::platforms::kugou::lyrics::get_lyric(&context.song_mid),
+                )
+                .await
+            }
             Platform::QqMusic => {
                 crate::platforms::qqmusic::lyrics::get_lyric_by_id(context.song_id).await
             }

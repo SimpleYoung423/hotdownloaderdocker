@@ -56,6 +56,8 @@ pub async fn get_download_link_with_credentials(
     mut credentials: Value,
 ) -> Result<(String, String), String> {
     let (hash, album, id, quality) = source(filename)?;
+    // 概念版取链沿用概念版客户端的 tracker 参数。clientver 在这个接口上是 11430，不是 11440。
+    let lite = super::client::is_lite();
     credentials
         .as_object_mut()
         .ok_or("酷狗凭据格式错误")?
@@ -68,13 +70,17 @@ pub async fn get_download_link_with_credentials(
                 "area_code": 1,
                 "ssa_flag": "is_fromtrack",
                 "version": 11430,
-                "page_id": 151369488,
+                "page_id": if lite { 967177915 } else { 151369488 },
                 "behavior": "play",
-                "pid": 2,
+                "pid": if lite { 411 } else { 2 },
                 "cmd": 26,
                 "pidversion": 3001,
                 "IsFreePart": 0,
-                "ppage_id": "463467626,350369493,788954147",
+                "ppage_id": if lite {
+                    "356753938,823673182,967485191"
+                } else {
+                    "463467626,350369493,788954147"
+                },
                 "cdnBackup": 1,
                 "module": "",
                 "clientver": 11430
@@ -205,6 +211,93 @@ mod tests {
             let mut invalid = response.clone();
             invalid[field] = value;
             assert!(parse_mobile_link(invalid, hash).is_err(), "{field}");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "使用本机已登录凭据查询会员状态"]
+    async fn live_logged_in_vip() {
+        let store = crate::platforms::kugou::login::Store::new(
+            "/tmp/hotdownloader-debug/data/kugou-credentials.json",
+        );
+        let mut params = store.request_params().expect("读取酷狗登录态");
+        params["busi_type"] = serde_json::json!("concept");
+        let result = super::super::client::request_with(
+            &crate::platforms::CLIENT,
+            "https://kugouvip.kugou.com",
+            "/v1/get_union_vip",
+            "",
+            params,
+            None,
+        )
+        .await;
+        match result {
+            Ok(value) => eprintln!("vip ok {}", value),
+            Err(error) => eprintln!("vip err {error}"),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "使用本机已登录凭据打印酷狗取链响应"]
+    async fn live_logged_in_link() {
+        let store = crate::platforms::kugou::login::Store::new("/tmp/hotdownloader-debug/data/kugou-credentials.json");
+        let params = store.request_params().expect("读取酷狗登录态");
+        eprintln!(
+            "account userid_len={} dfid={} mid_len={}",
+            params["userid"].as_str().unwrap_or("").len(),
+            params["dfid"].as_str().unwrap_or(""),
+            params["mid"].as_str().unwrap_or("").len()
+        );
+        let song_mid = "55fea1927ac4d460f6eb3b9262ac9981";
+        for filename in [
+            "55fea1927ac4d460f6eb3b9262ac9981_108011230_64528854_128kmp3.mp3",
+            "ae06fc8d6fd5fbfb292ab1dc85d00d8b_108011230_64528854_320kmp3.mp3",
+            "044f3bafe86ab5b7d8cd2a89c1b4822d_108011230_64528854_flac.flac",
+            "d9f05cec3df3d3cf9287d26dbde05fbd_108011230_64528854_hires.flac",
+        ] {
+            let started = std::time::Instant::now();
+            let result = get_download_link_with_credentials(
+                &crate::platforms::CLIENT,
+                song_mid,
+                filename,
+                params.clone(),
+            )
+            .await;
+            let link_secs = started.elapsed().as_secs_f64();
+            match result {
+                Ok((url, _)) => {
+                    let download_started = std::time::Instant::now();
+                    let response = crate::platforms::CLIENT.get(&url).send().await;
+                    match response {
+                        Ok(response) => {
+                            let status = response.status();
+                            let bytes = response.bytes().await;
+                            match bytes {
+                                Ok(bytes) => eprintln!(
+                                    "RESULT {filename} link {:.1}s download {:.1}s status={status} bytes={}",
+                                    link_secs,
+                                    download_started.elapsed().as_secs_f64(),
+                                    bytes.len()
+                                ),
+                                Err(error) => eprintln!(
+                                    "RESULT {filename} link {:.1}s download failed after {:.1}s: {error}",
+                                    link_secs,
+                                    download_started.elapsed().as_secs_f64()
+                                ),
+                            }
+                        }
+                        Err(error) => eprintln!(
+                            "RESULT {filename} link {:.1}s download request failed after {:.1}s: {error}",
+                            link_secs,
+                            download_started.elapsed().as_secs_f64()
+                        ),
+                    }
+                }
+                Err(error) => eprintln!(
+                    "RESULT {filename} link {:.1}s err {error}",
+                    link_secs
+                ),
+            }
         }
     }
 

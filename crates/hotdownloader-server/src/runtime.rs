@@ -326,6 +326,7 @@ pub struct ServerRuntime {
     pub events: Arc<ServerEvents>,
     pub login_store: Arc<FileLoginStore>,
     pub kugou_store: Arc<hotdownloader_core::platforms::kugou::login::Store>,
+    pub kugou_lite_store: Arc<hotdownloader_core::platforms::kugou::login::Store>,
     pub netease_store: Arc<hotdownloader_core::platforms::netease::login::Store>,
     pub auth: Arc<RwLock<crate::auth::AccessAuth>>,
     pub mcp_key: Arc<crate::mcp::McpKey>,
@@ -359,11 +360,15 @@ impl ServerRuntime {
         let kugou_store = Arc::new(hotdownloader_core::platforms::kugou::login::Store::new(
             data_dir.join("kugou-credentials.json"),
         ));
+        let kugou_lite_store = Arc::new(hotdownloader_core::platforms::kugou::login::Store::new(
+            data_dir.join("kugou-lite-credentials.json"),
+        ));
         let links = Arc::new(
             PlatformDownloadLinkProvider::from_credentials_file(
                 data_dir.join("qq-credentials.json"),
             )
             .with_kugou_store(kugou_store.clone())
+            .with_kugou_lite_store(kugou_lite_store.clone())
             .with_netease_store(netease_store.clone()),
         );
         let login_store = Arc::new(FileLoginStore::new(data_dir.join("qq-credentials.json")));
@@ -385,6 +390,7 @@ impl ServerRuntime {
             events,
             login_store,
             kugou_store,
+            kugou_lite_store,
             netease_store,
             settings_patch_lock: Mutex::new(()),
             auth: Arc::new(RwLock::new(auth)),

@@ -23,6 +23,7 @@ pub struct PlatformDownloadLinkProvider {
     client: Client,
     qq_credentials: Arc<dyn QqCredentialSource>,
     kugou_store: Option<Arc<crate::platforms::kugou::login::Store>>,
+    kugou_lite_store: Option<Arc<crate::platforms::kugou::login::Store>>,
     netease_store: Option<Arc<crate::platforms::netease::login::Store>>,
 }
 
@@ -33,6 +34,7 @@ impl PlatformDownloadLinkProvider {
             client,
             qq_credentials,
             kugou_store: None,
+            kugou_lite_store: None,
             netease_store: None,
         }
     }
@@ -45,6 +47,7 @@ impl PlatformDownloadLinkProvider {
             client,
             qq_credentials,
             kugou_store: None,
+            kugou_lite_store: None,
             netease_store: None,
         }
     }
@@ -55,12 +58,21 @@ impl PlatformDownloadLinkProvider {
             client,
             qq_credentials,
             kugou_store: None,
+            kugou_lite_store: None,
             netease_store: None,
         }
     }
 
     pub fn with_kugou_store(mut self, store: Arc<crate::platforms::kugou::login::Store>) -> Self {
         self.kugou_store = Some(store);
+        self
+    }
+
+    pub fn with_kugou_lite_store(
+        mut self,
+        store: Arc<crate::platforms::kugou::login::Store>,
+    ) -> Self {
+        self.kugou_lite_store = Some(store);
         self
     }
 
@@ -101,20 +113,27 @@ impl DownloadLinkProvider for PlatformDownloadLinkProvider {
                     crate::platforms::netease::link::get_download_link(song_mid, filename, &cookie)
                         .await
                 }
-                Platform::Kugou => {
-                    let params = self
-                        .kugou_store
-                        .as_ref()
+                Platform::Kugou | Platform::KugouLite => {
+                    let store = if platform == Platform::KugouLite {
+                        self.kugou_lite_store.as_ref()
+                    } else {
+                        self.kugou_store.as_ref()
+                    };
+                    let params = store
                         .map(|s| s.request_params())
                         .transpose()?
                         .unwrap_or_else(|| serde_json::json!({}));
-                    crate::platforms::kugou::link::get_download_link_with_credentials(
+                    let link = crate::platforms::kugou::link::get_download_link_with_credentials(
                         &self.client,
                         song_mid,
                         filename,
                         params,
-                    )
-                    .await
+                    );
+                    if platform == Platform::KugouLite {
+                        crate::platforms::kugou::with_lite(link).await
+                    } else {
+                        link.await
+                    }
                 }
                 Platform::QqMusic => {
                     let credentials = self.qq_credentials.current().await?;

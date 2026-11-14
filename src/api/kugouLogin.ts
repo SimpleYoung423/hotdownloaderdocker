@@ -29,3 +29,17 @@ export function kugouLogin(
               body: JSON.stringify(args),
           })
 }
+
+export function kugouLiteLogin(
+    action: 'status' | 'qr' | 'check' | 'manual' | 'logout',
+    id?: string,
+    credentials?: KugouCredentials,
+): Promise<KugouLoginResult> {
+    const args = { action, id, credentials }
+    return isTauri()
+        ? invoke('kugou_lite_login', args)
+        : webRequest('/api/login/kugou-lite', {
+              method: 'POST',
+              body: JSON.stringify(args),
+          })
+}

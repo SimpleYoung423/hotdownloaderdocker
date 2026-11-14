@@ -1,5 +1,5 @@
 import { PLATFORMS } from '../config/platforms'
-import { kugouLogin } from '../api/kugouLogin'
+import { kugouLiteLogin, kugouLogin } from '../api/kugouLogin'
 import { getLoginStatus } from '../api/musicApi'
 import { neteaseLogin } from '../api/neteaseLogin'
 
@@ -8,14 +8,16 @@ import { neteaseLogin } from '../api/neteaseLogin'
  * 单个平台查询失败时当作未登录，避免挡住其余平台。
  */
 export async function loadLoggedInPlatforms(): Promise<Set<string>> {
-    const [qq, kugou, netease] = await Promise.all([
+    const [qq, kugou, kugouLite, netease] = await Promise.all([
         getLoginStatus('qqmusic').then((status) => status.logged_in).catch(() => false),
         kugouLogin('status').then((status) => status.logged_in === true).catch(() => false),
+        kugouLiteLogin('status').then((status) => status.logged_in === true).catch(() => false),
         neteaseLogin('status').then((status) => status.logged_in === true).catch(() => false),
     ])
     const loggedIn = new Set<string>()
     if (qq) loggedIn.add('qqmusic')
     if (kugou) loggedIn.add('kugou')
+    if (kugouLite) loggedIn.add('kugoulite')
     if (netease) loggedIn.add('netease')
     return loggedIn
 }

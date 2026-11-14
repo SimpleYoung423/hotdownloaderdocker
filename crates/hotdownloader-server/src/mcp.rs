@@ -336,7 +336,7 @@ fn tool(name: &str, description: &str, input_schema: Value) -> Value {
 }
 
 fn platform_schema() -> Value {
-    json!({ "type": "string", "enum": ["qqmusic", "kuwo"], "description": "音乐平台" })
+    json!({ "type": "string", "enum": ["qqmusic", "kuwo", "kugou", "kugoulite", "netease"], "description": "音乐平台。kugoulite 为酷狗概念版" })
 }
 
 fn paged_keyword_schema() -> Value {

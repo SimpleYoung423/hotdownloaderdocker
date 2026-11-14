@@ -53,6 +53,7 @@ pub async fn download_task(
         )
     };
 
+    let started_at = std::time::Instant::now();
     log::info!("任务 {} 开始下载，文件路径: {}", ctx.task_id, download_dir);
 
     // 2. 创建目录并验证（仅普通模式需要）
@@ -98,6 +99,7 @@ pub async fn download_task(
 
         // 如果没有有效链接，实时获取（首次进入或暂停恢复后）
         if url.is_empty() {
+            let link_started = std::time::Instant::now();
             let link_result = tokio::select! {
                 biased;
                 _ = controller.cancel_token.cancelled() => break 'download,
@@ -113,7 +115,11 @@ pub async fn download_task(
                 Ok((new_url, new_key)) => {
                     url = new_url;
                     key = new_key;
-                    log::info!("任务 {} 获取到新下载链接", ctx.task_id);
+                    log::info!(
+                        "任务 {} 获取到新下载链接，耗时 {:.1} 秒",
+                        ctx.task_id,
+                        link_started.elapsed().as_secs_f64()
+                    );
                 }
                 Err(e) => {
                     if controller.pause_flag.load(Ordering::SeqCst) {
@@ -303,7 +309,11 @@ pub async fn download_task(
         .await;
         match outcome {
             StreamOutcome::Completed => {
-                log::info!("下载完成: {}", download_dir);
+                log::info!(
+                    "下载完成: {}，耗时 {:.1} 秒",
+                    download_dir,
+                    started_at.elapsed().as_secs_f64()
+                );
                 completed_ok = true;
                 break 'download;
             }

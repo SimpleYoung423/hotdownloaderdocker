@@ -14,6 +14,9 @@ pub enum Platform {
     /// 酷狗音乐
     #[serde(rename = "kugou")]
     Kugou,
+    /// 酷狗概念版。凭据和签名与标准酷狗分开。
+    #[serde(rename = "kugoulite")]
+    KugouLite,
     /// 网易云音乐
     #[serde(rename = "netease")]
     Netease,
@@ -28,6 +31,7 @@ impl FromStr for Platform {
             "qqmusic" => Ok(Self::QqMusic),
             "kuwo" => Ok(Self::Kuwo),
             "kugou" => Ok(Self::Kugou),
+            "kugoulite" => Ok(Self::KugouLite),
             "netease" => Ok(Self::Netease),
             _ => Err(format!("不支持的平台: {value}")),
         }
@@ -43,6 +47,10 @@ mod tests {
         assert_eq!("qqmusic".parse::<Platform>().unwrap(), Platform::QqMusic);
         assert_eq!("kuwo".parse::<Platform>().unwrap(), Platform::Kuwo);
         assert_eq!("kugou".parse::<Platform>().unwrap(), Platform::Kugou);
+        assert_eq!(
+            "kugoulite".parse::<Platform>().unwrap(),
+            Platform::KugouLite
+        );
         assert_eq!("netease".parse::<Platform>().unwrap(), Platform::Netease);
         assert_eq!(
             "other".parse::<Platform>().unwrap_err(),

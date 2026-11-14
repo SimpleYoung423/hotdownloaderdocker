@@ -499,7 +499,7 @@ pub async fn handle(
             },
             Err(error) => error_response(StatusCode::BAD_REQUEST, error),
         },
-        (Method::POST, "/api/login/kugou") => {
+        (Method::POST, "/api/login/kugou") | (Method::POST, "/api/login/kugou-lite") => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase")]
             struct Input {
@@ -508,21 +508,32 @@ pub async fn handle(
                 id: String,
                 credentials: Option<hotdownloader_core::platforms::kugou::login::ManualCredentials>,
             }
+            let store = if path == "/api/login/kugou-lite" {
+                &runtime.kugou_lite_store
+            } else {
+                &runtime.kugou_store
+            };
             match read_json(request)
                 .await
                 .and_then(|v| serde_json::from_value::<Input>(v).map_err(|e| e.to_string()))
             {
-                Ok(input) => match hotdownloader_core::platforms::kugou::login::execute(
-                    &runtime.kugou_store,
-                    &input.action,
-                    &input.id,
-                    input.credentials,
-                )
-                .await
-                {
-                    Ok(value) => json_response(StatusCode::OK, value),
-                    Err(error) => error_response(StatusCode::BAD_REQUEST, error),
-                },
+                Ok(input) => {
+                    let result = hotdownloader_core::platforms::kugou::login::execute(
+                        store,
+                        &input.action,
+                        &input.id,
+                        input.credentials,
+                    );
+                    let result = if path == "/api/login/kugou-lite" {
+                        hotdownloader_core::platforms::kugou::with_lite(result).await
+                    } else {
+                        result.await
+                    };
+                    match result {
+                        Ok(value) => json_response(StatusCode::OK, value),
+                        Err(error) => error_response(StatusCode::BAD_REQUEST, error),
+                    }
+                }
                 Err(error) => error_response(StatusCode::BAD_REQUEST, error),
             }
         }

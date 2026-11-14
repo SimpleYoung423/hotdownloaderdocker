@@ -210,12 +210,26 @@ const GOLD_QUALITIES = new Set(['flac', 'ape', 'wav'])
 function songOf(file: AudioFileEntry) {
     const base = file.name.replace(/\.[^.]+$/, '')
     const parts = base.split(' - ')
-    const title = parts[0] || base
-    const artist = parts.length > 1 ? parts[1] : '未知歌手'
+    let title = parts[0] || base
+    let artist = parts.length > 1 ? parts[1] : ''
+    // 模板 {artist}-{song} 没有空格，按第一个连字符拆开。
+    if (!artist) {
+        const hyphen = base.indexOf('-')
+        if (hyphen > 0 && hyphen < base.length - 1) {
+            artist = base.slice(0, hyphen).trim()
+            title = base.slice(hyphen + 1).trim() || title
+        }
+    }
+    // 模板 {artist}/{album}/{song} 的文件名只有歌名，歌手在第一级目录。
+    if (!artist) {
+        const dir = relativeDir(file)
+        const top = dir.split('/')[0]
+        if (dir.includes('/') && top) artist = top
+    }
     const quality = (parts.length > 3 ? parts[3] : file.extension).toUpperCase()
     return {
         title,
-        artist,
+        artist: artist || '未知歌手',
         quality,
         qualityClass: GOLD_QUALITIES.has(file.extension) ? 'gold' : 'gray',
     }

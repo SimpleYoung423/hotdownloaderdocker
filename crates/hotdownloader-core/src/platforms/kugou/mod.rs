@@ -12,6 +12,17 @@ pub mod playlist;
 pub mod search;
 pub mod suggest;
 
+pub use client::with_lite;
+
+/// 概念版渠道走概念版签名；其余平台原样执行。
+pub async fn call<Fut: std::future::Future>(platform: &str, future: Fut) -> Fut::Output {
+    if platform == "kugoulite" {
+        with_lite(future).await
+    } else {
+        future.await
+    }
+}
+
 #[cfg(test)]
 mod live_tests {
     use super::*;
